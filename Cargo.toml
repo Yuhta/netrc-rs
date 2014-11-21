@@ -1,0 +1,9 @@
+[package]
+
+name = "netrc"
+version = "0.0.1"
+authors = ["Paul Woolcock <paul@woolcock.us>"]
+repository = "https://github.com/pwoolcoc/netrc"
+license = "MIT"
+description = "Parses and encapsulates the `netrc` file format"
+
