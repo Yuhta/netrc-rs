@@ -14,6 +14,7 @@ struct Machine {
     account: String,
 }
 
+#[deriving(Default)]
 struct Netrc {
     pub hosts: Vec<Host>,
     macros: Vec<Macro>,
