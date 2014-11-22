@@ -1,4 +1,5 @@
 use std::default::Default;
+use std::iter::Iterator;
 use std::io::{IoResult};
 use std::io::fs::File;
 
@@ -20,30 +21,28 @@ struct Netrc {
     macros: Vec<Macro>,
 }
 
-struct NetrcParser<T> {
-    input: Option<T>,
+struct NetrcParser<'a> {
+    input: Iterator<String>,
     lineno: uint,
 }
 
-impl<T: Reader> NetrcParser<T> {
-    pub fn new() -> NetrcParser<T> {
-        NetrcParser {
-            input: None,
+impl<'a> NetrcParser<'a> {
+    pub fn with_input<T: Reader>(input: &mut T) -> IoResult<NetrcParser> {
+        let input = try!(input.read_to_string());
+        Ok(NetrcParser {
+            input: input.graphemes(true),
             lineno: Default::default(),
-        }
+        })
     }
 
-    pub fn with_input(input: T) -> NetrcParser<T> {
-        NetrcParser {
-            input: Some(input),
-            lineno: Default::default(),
-        }
+    pub fn with_file(file: &Path) -> IoResult<NetrcParser> {
+        let mut f = try!(File::open(file));
+        NetrcParser::with_input(&mut f)
     }
 
-    pub fn with_file(file: &Path) -> IoResult<NetrcParser<File>> {
-        let f = try!(File::open(file));
-        Ok(NetrcParser::with_input(f))
-    }
+    // pub fn next_token(&mut self) -> &str {
+    //     match self.input.
+    // }
 
     pub fn parse(&self) -> Netrc {
         Default::default()
