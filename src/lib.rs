@@ -1,21 +1,21 @@
 use std::io::BufRead;
 
-type Macro = (String, String);
-type Host = (String, Machine);
+pub type Macro = (String, String);
+pub type Host = (String, Machine);
 
 #[derive(Debug, Default)]
-struct Machine {
-    login: String,
-    password: Option<String>,
-    account: Option<String>,
-    port: Option<u16>,
+pub struct Machine {
+    pub login: String,
+    pub password: Option<String>,
+    pub account: Option<String>,
+    pub port: Option<u16>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub struct Netrc {
-    hosts: Vec<Host>,
-    default: Option<Machine>,
-    macros: Vec<Macro>,
+    pub hosts: Vec<Host>,
+    pub default: Option<Machine>,
+    pub macros: Vec<Macro>,
 }
 
 #[derive(Debug)]
@@ -26,89 +26,102 @@ pub enum Error {
 
 pub type Result<A> = std::result::Result<A, Error>;
 
-pub fn parse<A: BufRead>(buf: A) -> Result<Netrc> {
-    let mut netrc = Netrc {
-        hosts: Vec::new(),
-        default: None,
-        macros: Vec::new(),
-    };
-    let mut lexer = Lexer::new(buf);
-    let mut current_machine = MachineRef::Nothing;
-    loop {
-        match lexer.next_word() {
-            None         => break,
-            Some(Err(e)) => return Err(e),
-            Some(Ok(w))  => current_machine = try! {
-                parse_entry(&mut lexer, &w, &mut netrc, current_machine)
-            },
-        }
-    }
-    Ok(netrc)
-}
-
-fn parse_entry<A: BufRead>(lexer: &mut Lexer<A>,
-                           item: &str,
-                           netrc: &mut Netrc,
-                           current_machine: MachineRef) -> Result<MachineRef> {
-    macro_rules! with_current_machine {
-        ($entry: expr, $machine: ident, $body: block) => {
-            match find_machine(netrc, &current_machine) {
-                Some($machine) => {
-                    $body;
-                    Ok(current_machine)
-                }
-                None =>
-                    Err(Error::Parse(format!("No machine defined for {}", $entry),
-                                     lexer.lnum)),
+impl Netrc {
+    /// Parse a `Netrc` object from byte stream.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use netrc::Netrc;
+    /// use std::io::Cursor;
+    ///
+    /// let input: Cursor<&[u8]> =
+    ///   Cursor::new(b"machine example.com login foo password bar");
+    /// let netrc = Netrc::parse(input).unwrap();
+    /// ```
+    pub fn parse<A: BufRead>(buf: A) -> Result<Netrc> {
+        let mut netrc: Netrc = Default::default();
+        let mut lexer = Lexer::new(buf);
+        let mut current_machine = MachineRef::Nothing;
+        loop {
+            match lexer.next_word() {
+                None         => break,
+                Some(Err(e)) => return Err(e),
+                Some(Ok(w))  => current_machine = try! {
+                    netrc.parse_entry(&mut lexer, &w, current_machine)
+                },
             }
         }
+        Ok(netrc)
     }
 
-    match item {
-        "machine" => {
-            let host_name = try!(lexer.next_word_or_err());
-            netrc.hosts.push((host_name, Default::default()));
-            Ok(MachineRef::Host(netrc.hosts.len() - 1))
-        }
-        "default" => {
-            netrc.default = Some(Default::default());
-            Ok(MachineRef::Default)
-        }
-        "login" => with_current_machine!("login", m, {
-            m.login = try!(lexer.next_word_or_err());
-        }),
-        "password" => with_current_machine!("password", m, {
-            m.password = Some(try!(lexer.next_word_or_err()));
-        }),
-        "account" => with_current_machine!("account", m, {
-            m.account = Some(try!(lexer.next_word_or_err()));
-        }),
-        "port" => with_current_machine!("port", m, {
-            let port = try!(lexer.next_word_or_err());
-            match port.parse() {
-                Ok(port) => m.port = Some(port),
-                Err(_)   => {
-                    let msg = format!("Unable to parse port number `{}'", port);
-                    return Err(Error::Parse(msg, lexer.lnum));
+    fn parse_entry<A: BufRead>(&mut self,
+                               lexer: &mut Lexer<A>,
+                               item: &str,
+                               current_machine: MachineRef) -> Result<MachineRef> {
+        macro_rules! with_current_machine {
+            ($entry: expr, $machine: ident, $body: block) => {
+                match self.find_machine(&current_machine) {
+                    Some($machine) => {
+                        $body;
+                        Ok(current_machine)
+                    }
+                    None =>
+                        Err(Error::Parse(format!("No machine defined for {}",
+                                                 $entry),
+                                         lexer.lnum)),
                 }
             }
-        }),
-        "macdef" => {
-            let name = try!(lexer.next_word_or_err());
-            let cmds = try!(lexer.next_subcommands());
-            netrc.macros.push((name, cmds));
-            Ok(MachineRef::Nothing)
         }
-        _ => Err(Error::Parse(format!("Unknown entry `{}'", item), lexer.lnum)),
-    }
-}
 
-fn find_machine<'a>(netrc: &'a mut Netrc,
-                    reference: &MachineRef) -> Option<&'a mut Machine> {
-    match *reference {
-        MachineRef::Nothing => None,
-        MachineRef::Default => netrc.default.as_mut(),
-        MachineRef::Host(n) => Some(&mut netrc.hosts[n].1),
+        match item {
+            "machine" => {
+                let host_name = try!(lexer.next_word_or_err());
+                self.hosts.push((host_name, Default::default()));
+                Ok(MachineRef::Host(self.hosts.len() - 1))
+            }
+            "default" => {
+                self.default = Some(Default::default());
+                Ok(MachineRef::Default)
+            }
+            "login" => with_current_machine!("login", m, {
+                m.login = try!(lexer.next_word_or_err());
+            }),
+            "password" => with_current_machine!("password", m, {
+                m.password = Some(try!(lexer.next_word_or_err()));
+            }),
+            "account" => with_current_machine!("account", m, {
+                m.account = Some(try!(lexer.next_word_or_err()));
+            }),
+            "port" => with_current_machine!("port", m, {
+                let port = try!(lexer.next_word_or_err());
+                match port.parse() {
+                    Ok(port) => m.port = Some(port),
+                    Err(_)   => {
+                        let msg = format!("Unable to parse port number `{}'",
+                                          port);
+                        return Err(Error::Parse(msg, lexer.lnum));
+                    }
+                }
+            }),
+            "macdef" => {
+                let name = try!(lexer.next_word_or_err());
+                let cmds = try!(lexer.next_subcommands());
+                self.macros.push((name, cmds));
+                Ok(MachineRef::Nothing)
+            }
+            _ => Err(Error::Parse(format!("Unknown entry `{}'", item),
+                                  lexer.lnum)),
+        }
+    }
+
+    fn find_machine(&mut self,
+                    reference: &MachineRef) -> Option<&mut Machine> {
+        match *reference {
+            MachineRef::Nothing => None,
+            MachineRef::Default => self.default.as_mut(),
+            MachineRef::Host(n) => Some(&mut self.hosts[n].1),
+        }
     }
 }
 
@@ -228,7 +241,7 @@ mod test {
                              password p@ssw0rd
                              port 42";
         let input = BufReader::new(input.as_bytes());
-        let netrc = parse(input).unwrap();
+        let netrc = Netrc::parse(input).unwrap();
         assert_eq!(netrc.hosts.len(), 1);
         assert!(netrc.macros.is_empty());
         let (ref name, ref mach) = netrc.hosts[0];
@@ -250,7 +263,7 @@ mod test {
 
                      machine host2.com login login2";
         let input = BufReader::new(input.as_bytes());
-        let netrc = parse(input).unwrap();
+        let netrc = Netrc::parse(input).unwrap();
         assert_eq!(netrc.hosts.len(), 2);
         for host in netrc.hosts.iter().enumerate() {
             let (i, &(ref name, ref mach)) = host;
@@ -272,7 +285,7 @@ mod test {
         let input = "machine example.com login test
                      default login def";
         let input = BufReader::new(input.as_bytes());
-        let netrc = parse(input).unwrap();
+        let netrc = Netrc::parse(input).unwrap();
         assert_eq!(netrc.hosts.len(), 1);
         let (ref name, ref mach) = netrc.hosts[0];
         assert_eq!(name, "example.com");
@@ -286,7 +299,7 @@ mod test {
         let input = "machine foobar.com
                              foo";
         let input = BufReader::new(input.as_bytes());
-        match parse(input).unwrap_err() {
+        match Netrc::parse(input).unwrap_err() {
             Error::Parse(msg, lnum) => {
                 assert_eq!(msg, "Unknown entry `foo'");
                 assert_eq!(lnum, 2);
@@ -301,7 +314,7 @@ mod test {
                              password quux
                              login";
         let input = BufReader::new(input.as_bytes());
-        match parse(input).unwrap_err() {
+        match Netrc::parse(input).unwrap_err() {
             Error::Parse(msg, lnum) => {
                 assert_eq!(msg, "Unexpected end of file");
                 assert_eq!(lnum, 3);
@@ -314,7 +327,7 @@ mod test {
     fn parse_error_no_machine() {
         let input = "password quux login foo";
         let input = BufReader::new(input.as_bytes());
-        match parse(input).unwrap_err() {
+        match Netrc::parse(input).unwrap_err() {
             Error::Parse(msg, lnum) => {
                 assert_eq!(msg, "No machine defined for password");
                 assert_eq!(lnum, 1);
@@ -327,7 +340,7 @@ mod test {
     fn parse_error_port() {
         let input = "machine foo.com login bar port quux";
         let input = BufReader::new(input.as_bytes());
-        match parse(input).unwrap_err() {
+        match Netrc::parse(input).unwrap_err() {
             Error::Parse(msg, lnum) => {
                 assert_eq!(msg, "Unable to parse port number `quux'");
                 assert_eq!(lnum, 1);
