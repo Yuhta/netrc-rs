@@ -1,0 +1,1 @@
+initSidebarItems({"enum":[["Error",""]],"struct":[["Machine",""],["Netrc",""]],"type":[["Host",""],["Macro",""],["Result",""]]});
