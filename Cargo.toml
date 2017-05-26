@@ -6,3 +6,6 @@ repository = "https://github.com/Yuhta/netrc-rs"
 documentation = "http://yuhta.github.io/netrc-rs/doc/netrc/index.html"
 license = "MIT/Apache-2.0"
 description = "Parses and encapsulates the `netrc` file format"
+
+[dependencies]
+error-chain = "0.10.0"
