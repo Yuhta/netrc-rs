@@ -8,10 +8,10 @@ use std::io::{BufRead, BufReader, Read};
 mod errors;
 
 #[derive(Debug, PartialEq, Clone)]
-pub struct Macro(String, String);
+pub struct Macro(pub String, pub String);
 
 #[derive(Debug, PartialEq, Clone)]
-pub struct Host(String, Machine);
+pub struct Host(pub String, pub Machine);
 
 /// Represents a machine record of a Netrc file
 #[derive(Debug, PartialEq, Clone, Default)]
