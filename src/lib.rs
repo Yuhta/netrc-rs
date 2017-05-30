@@ -1,11 +1,11 @@
 #[macro_use] extern crate error_chain;
 
-use errors::*;
+pub use errors::*;
 
 use std::str::FromStr;
 use std::io::{BufRead, BufReader, Read};
 
-pub mod errors;
+mod errors;
 
 #[derive(Debug, PartialEq, Clone)]
 pub struct Macro(String, String);
