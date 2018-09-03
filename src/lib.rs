@@ -26,6 +26,105 @@ pub enum Error {
 
 pub type Result<A> = std::result::Result<A, Error>;
 
+pub struct Parser {
+  ignore_unknown_entries: bool
+}
+
+impl Parser {
+  pub fn parse<A: BufRead>(&self, buf: A) -> Result<Netrc> {
+    let mut netrc: Netrc = Default::default();
+    let mut lexer = Lexer::new(buf);
+    let mut current_machine = MachineRef::Nothing;
+    loop {
+        match lexer.next_word() {
+            None         => break,
+            Some(Err(e)) => return Err(e),
+            Some(Ok(w))  => current_machine = try! {
+                self.parse_entry(&mut netrc, &mut lexer, &w, current_machine)
+            },
+        }
+    }
+    Ok(netrc)
+  }
+  
+  fn parse_entry<A: BufRead>(&self,
+                             netrc: &mut Netrc,
+                             lexer: &mut Lexer<A>,
+                             item: &str,
+                             current_machine: MachineRef) -> Result<MachineRef> {
+      macro_rules! with_current_machine {
+          ($entry: expr, $machine: ident, $body: block) => {
+              match self.find_machine(netrc, &current_machine) {
+                  Some($machine) => {
+                      $body;
+                      Ok(current_machine)
+                  }
+                  None =>
+                      Err(Error::Parse(format!("No machine defined for {}",
+                                               $entry),
+                                       lexer.lnum)),
+              }
+          }
+      }
+
+      match item {
+          "machine" => {
+              let host_name = try!(lexer.next_word_or_err());
+              netrc.hosts.push((host_name, Default::default()));
+              Ok(MachineRef::Host(netrc.hosts.len() - 1))
+          }
+          "default" => {
+              netrc.default = Some(Default::default());
+              Ok(MachineRef::Default)
+          }
+          "login" => with_current_machine!("login", m, {
+              m.login = try!(lexer.next_word_or_err());
+          }),
+          "password" => with_current_machine!("password", m, {
+              m.password = Some(try!(lexer.next_word_or_err()));
+          }),
+          "account" => with_current_machine!("account", m, {
+              m.account = Some(try!(lexer.next_word_or_err()));
+          }),
+          "port" => with_current_machine!("port", m, {
+              let port = try!(lexer.next_word_or_err());
+              match port.parse() {
+                  Ok(port) => m.port = Some(port),
+                  Err(_)   => {
+                      let msg = format!("Unable to parse port number `{}'",
+                                        port);
+                      return Err(Error::Parse(msg, lexer.lnum));
+                  }
+              }
+          }),
+          "macdef" => {
+              let name = try!(lexer.next_word_or_err());
+              let cmds = try!(lexer.next_subcommands());
+              netrc.macros.push((name, cmds));
+              Ok(MachineRef::Nothing)
+          }
+          _ => {
+            if self.ignore_unknown_entries {
+              Ok(MachineRef::Nothing)
+            } else {
+              Err(Error::Parse(format!("Unknown entry `{}'", item),
+                               lexer.lnum))
+            }
+          },
+      }
+  }
+
+  fn find_machine<'a>(&self,
+                  netrc: &'a mut Netrc,
+                  reference: &MachineRef) -> Option<&'a mut Machine> {
+      match *reference {
+          MachineRef::Nothing => None,
+          MachineRef::Default => netrc.default.as_mut(),
+          MachineRef::Host(n) => Some(&mut netrc.hosts[n].1),
+      }
+  }
+}
+
 impl Netrc {
     /// Parse a `Netrc` object from byte stream.
     ///
@@ -40,111 +139,8 @@ impl Netrc {
     /// let netrc = Netrc::parse(input).unwrap();
     /// ```
     pub fn parse<A: BufRead>(buf: A) -> Result<Netrc> {
-        let mut netrc: Netrc = Default::default();
-        let mut lexer = Lexer::new(buf);
-        let mut current_machine = MachineRef::Nothing;
-        loop {
-            match lexer.next_word() {
-                None         => break,
-                Some(Err(e)) => return Err(e),
-                Some(Ok(w))  => current_machine = try! {
-                    netrc.parse_entry(&mut lexer, &w, current_machine, false)
-                },
-            }
-        }
-        Ok(netrc)
-    }
-
-    pub fn parse_ignoring_unknown_entries<A: BufRead>(buf: A) -> Result<Netrc> {
-        let mut netrc: Netrc = Default::default();
-        let mut lexer = Lexer::new(buf);
-        let mut current_machine = MachineRef::Nothing;
-        loop {
-            match lexer.next_word() {
-                None         => break,
-                Some(Err(e)) => return Err(e),
-                Some(Ok(w))  => current_machine = try! {
-                    netrc.parse_entry(&mut lexer, &w, current_machine, true)
-                },
-            }
-        }
-        Ok(netrc)
-    }
-
-    fn parse_entry<A: BufRead>(&mut self,
-                               lexer: &mut Lexer<A>,
-                               item: &str,
-                               current_machine: MachineRef,
-                               ignore_unknown_entires: bool) -> Result<MachineRef> {
-        macro_rules! with_current_machine {
-            ($entry: expr, $machine: ident, $body: block) => {
-                match self.find_machine(&current_machine) {
-                    Some($machine) => {
-                        $body;
-                        Ok(current_machine)
-                    }
-                    None =>
-                        Err(Error::Parse(format!("No machine defined for {}",
-                                                 $entry),
-                                         lexer.lnum)),
-                }
-            }
-        }
-
-        match item {
-            "machine" => {
-                let host_name = try!(lexer.next_word_or_err());
-                self.hosts.push((host_name, Default::default()));
-                Ok(MachineRef::Host(self.hosts.len() - 1))
-            }
-            "default" => {
-                self.default = Some(Default::default());
-                Ok(MachineRef::Default)
-            }
-            "login" => with_current_machine!("login", m, {
-                m.login = try!(lexer.next_word_or_err());
-            }),
-            "password" => with_current_machine!("password", m, {
-                m.password = Some(try!(lexer.next_word_or_err()));
-            }),
-            "account" => with_current_machine!("account", m, {
-                m.account = Some(try!(lexer.next_word_or_err()));
-            }),
-            "port" => with_current_machine!("port", m, {
-                let port = try!(lexer.next_word_or_err());
-                match port.parse() {
-                    Ok(port) => m.port = Some(port),
-                    Err(_)   => {
-                        let msg = format!("Unable to parse port number `{}'",
-                                          port);
-                        return Err(Error::Parse(msg, lexer.lnum));
-                    }
-                }
-            }),
-            "macdef" => {
-                let name = try!(lexer.next_word_or_err());
-                let cmds = try!(lexer.next_subcommands());
-                self.macros.push((name, cmds));
-                Ok(MachineRef::Nothing)
-            }
-            _ => {
-              if ignore_unknown_entires {
-                Ok(MachineRef::Nothing)
-              } else {
-                Err(Error::Parse(format!("Unknown entry `{}'", item),
-                                 lexer.lnum))
-              }
-            },
-        }
-    }
-
-    fn find_machine(&mut self,
-                    reference: &MachineRef) -> Option<&mut Machine> {
-        match *reference {
-            MachineRef::Nothing => None,
-            MachineRef::Default => self.default.as_mut(),
-            MachineRef::Host(n) => Some(&mut self.hosts[n].1),
-        }
+      let parser = Parser{ignore_unknown_entries: false};
+      return parser.parse(buf);
     }
 }
 
@@ -318,12 +314,13 @@ mod test {
     }
 
     #[test]
-    fn parse_unknown_entry() {
+    fn parse_ignoring_unknown_entries() {
         let input = "machine foobar.com
                              login test
                              method interactive";
         let input = BufReader::new(input.as_bytes());
-        let netrc = Netrc::parse_ignoring_unknown_entries(input).unwrap();
+        let parser = Parser{ignore_unknown_entries: true};
+        let netrc = parser.parse(input).unwrap();
         assert_eq!(netrc.hosts.len(), 1);
         let (ref name, ref mach) = netrc.hosts[0];
         assert_eq!(name, "foobar.com");
