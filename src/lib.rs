@@ -48,7 +48,23 @@ impl Netrc {
                 None         => break,
                 Some(Err(e)) => return Err(e),
                 Some(Ok(w))  => current_machine = try! {
-                    netrc.parse_entry(&mut lexer, &w, current_machine)
+                    netrc.parse_entry(&mut lexer, &w, current_machine, false)
+                },
+            }
+        }
+        Ok(netrc)
+    }
+
+    pub fn parse_ignoring_unknown_entries<A: BufRead>(buf: A) -> Result<Netrc> {
+        let mut netrc: Netrc = Default::default();
+        let mut lexer = Lexer::new(buf);
+        let mut current_machine = MachineRef::Nothing;
+        loop {
+            match lexer.next_word() {
+                None         => break,
+                Some(Err(e)) => return Err(e),
+                Some(Ok(w))  => current_machine = try! {
+                    netrc.parse_entry(&mut lexer, &w, current_machine, true)
                 },
             }
         }
@@ -58,7 +74,8 @@ impl Netrc {
     fn parse_entry<A: BufRead>(&mut self,
                                lexer: &mut Lexer<A>,
                                item: &str,
-                               current_machine: MachineRef) -> Result<MachineRef> {
+                               current_machine: MachineRef,
+                               ignore_unknown_entires: bool) -> Result<MachineRef> {
         macro_rules! with_current_machine {
             ($entry: expr, $machine: ident, $body: block) => {
                 match self.find_machine(&current_machine) {
@@ -110,8 +127,14 @@ impl Netrc {
                 self.macros.push((name, cmds));
                 Ok(MachineRef::Nothing)
             }
-            _ => Err(Error::Parse(format!("Unknown entry `{}'", item),
-                                  lexer.lnum)),
+            _ => {
+              if ignore_unknown_entires {
+                Ok(MachineRef::Nothing)
+              } else {
+                Err(Error::Parse(format!("Unknown entry `{}'", item),
+                                 lexer.lnum))
+              }
+            },
         }
     }
 
@@ -292,6 +315,19 @@ mod test {
         assert_eq!(mach.login, "test");
         let def_mach = netrc.default.unwrap();
         assert_eq!(def_mach.login, "def");
+    }
+
+    #[test]
+    fn parse_unknown_entry() {
+        let input = "machine foobar.com
+                             login test
+                             method interactive";
+        let input = BufReader::new(input.as_bytes());
+        let netrc = Netrc::parse_ignoring_unknown_entries(input).unwrap();
+        assert_eq!(netrc.hosts.len(), 1);
+        let (ref name, ref mach) = netrc.hosts[0];
+        assert_eq!(name, "foobar.com");
+        assert_eq!(mach.login, "test");
     }
 
     #[test]
