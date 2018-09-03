@@ -27,7 +27,13 @@ pub enum Error {
 pub type Result<A> = std::result::Result<A, Error>;
 
 pub struct Parser {
-  ignore_unknown_entries: bool
+  pub ignore_unknown_entries: bool
+}
+
+impl Default for Parser {
+    fn default() -> Self {
+        return Parser{ignore_unknown_entries: false};
+    }
 }
 
 impl Parser {
@@ -139,7 +145,7 @@ impl Netrc {
     /// let netrc = Netrc::parse(input).unwrap();
     /// ```
     pub fn parse<A: BufRead>(buf: A) -> Result<Netrc> {
-      let parser = Parser{ignore_unknown_entries: false};
+      let parser = Parser::default();
       return parser.parse(buf);
     }
 }
