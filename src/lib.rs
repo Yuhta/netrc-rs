@@ -9,6 +9,7 @@ pub struct Machine {
     pub password: Option<String>,
     pub account: Option<String>,
     pub port: Option<u16>,
+    pub method: Option<String>,
 }
 
 #[derive(Debug, Default)]
@@ -109,7 +110,18 @@ impl Netrc {
                 let cmds = try!(lexer.next_subcommands());
                 self.macros.push((name, cmds));
                 Ok(MachineRef::Nothing)
-            }
+            },
+            "method" => with_current_machine!("method", m, {
+                let method = try!(lexer.next_word_or_err());
+                match method.as_str() {
+                    "interactive" | "sso" => {
+                        m.method = Some(method);
+                    },
+                    _ => {
+                        return Err(Error::Parse(format!("Unknown method `{}'", method), lexer.lnum));
+                    }
+                }
+            }),
             _ => Err(Error::Parse(format!("Unknown entry `{}'", item),
                                   lexer.lnum)),
         }
@@ -346,6 +358,36 @@ mod test {
                 assert_eq!(lnum, 1);
             }
             e => panic!("Wrong Error type: {:?}", e),
+        }
+    }
+
+    #[test]
+    fn parse_method() {
+        let input = "machine foobar.com
+                             password quux
+                             login foo
+                             method interactive";
+        let input = BufReader::new(input.as_bytes());
+        let netrc = Netrc::parse(input).unwrap();
+        assert_eq!(netrc.hosts.len(), 1);
+        assert!(netrc.macros.is_empty());
+        let (ref name, ref mach) = netrc.hosts[0];
+        assert_eq!(mach.method.as_ref().unwrap(), "interactive");
+    }
+
+    #[test]
+    fn parse_unkown_method() {
+        let input = "machine foobar.com
+                             password quux
+                             login foo
+                             method invalid";
+        let input = BufReader::new(input.as_bytes());
+        match Netrc::parse(input).unwrap_err() {
+            Error::Parse(msg, lnum) => {
+                assert_eq!(msg, "Unknown method `invalid'");
+                assert_eq!(lnum, 4);
+            }
+            e => panic!("Wrong Error type: {:?}", e)
         }
     }
 }
