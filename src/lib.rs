@@ -56,20 +56,24 @@ impl Netrc {
         let mut current_machine = MachineRef::Nothing;
         loop {
             match lexer.next_word() {
-                None         => break,
+                None => break,
                 Some(Err(e)) => return Err(e),
-                Some(Ok(w))  => current_machine = try! {
-                    netrc.parse_entry(&mut lexer, &w, current_machine)
-                },
+                Some(Ok(w)) => {
+                    current_machine = try! {
+                        netrc.parse_entry(&mut lexer, &w, current_machine)
+                    }
+                }
             }
         }
         Ok(netrc)
     }
 
-    fn parse_entry<A: BufRead>(&mut self,
-                               lexer: &mut Lexer<A>,
-                               item: &str,
-                               current_machine: MachineRef) -> Result<MachineRef> {
+    fn parse_entry<A: BufRead>(
+        &mut self,
+        lexer: &mut Lexer<A>,
+        item: &str,
+        current_machine: MachineRef,
+    ) -> Result<MachineRef> {
         macro_rules! with_current_machine {
             ($entry: expr, $machine: ident, $body: block) => {
                 match self.find_machine(&current_machine) {
@@ -77,12 +81,12 @@ impl Netrc {
                         $body;
                         Ok(current_machine)
                     }
-                    None =>
-                        Err(Error::Parse(format!("No machine defined for {}",
-                                                 $entry),
-                                         lexer.lnum)),
+                    None => Err(Error::Parse(
+                        format!("No machine defined for {}", $entry),
+                        lexer.lnum,
+                    )),
                 }
-            }
+            };
         }
 
         match item {
@@ -108,9 +112,8 @@ impl Netrc {
                 let port = try!(lexer.next_word_or_err());
                 match port.parse() {
                     Ok(port) => m.port = Some(port),
-                    Err(_)   => {
-                        let msg = format!("Unable to parse port number `{}'",
-                                          port);
+                    Err(_) => {
+                        let msg = format!("Unable to parse port number `{}'", port);
                         return Err(Error::Parse(msg, lexer.lnum));
                     }
                 }
@@ -121,13 +124,14 @@ impl Netrc {
                 self.macros.push((name, cmds));
                 Ok(MachineRef::Nothing)
             }
-            _ => Err(Error::Parse(format!("Unknown entry `{}'", item),
-                                  lexer.lnum)),
+            _ => Err(Error::Parse(
+                format!("Unknown entry `{}'", item),
+                lexer.lnum,
+            )),
         }
     }
 
-    fn find_machine(&mut self,
-                    reference: &MachineRef) -> Option<&mut Machine> {
+    fn find_machine(&mut self, reference: &MachineRef) -> Option<&mut Machine> {
         match *reference {
             MachineRef::Nothing => None,
             MachineRef::Default => self.default.as_mut(),
@@ -188,13 +192,19 @@ struct Lexer<A> {
 
 impl<A: BufRead> Lexer<A> {
     fn new(buf: A) -> Lexer<A> {
-        Lexer { buf: buf, line: Tokens::empty(), lnum: 0 }
+        Lexer {
+            buf: buf,
+            line: Tokens::empty(),
+            lnum: 0,
+        }
     }
 
     fn read_line(&mut self, buf: &mut String) -> Result<usize> {
         let r = self.buf.read_line(buf).map_err(Error::Io);
         for &n in r.iter() {
-            if n > 0 { self.lnum += 1 };
+            if n > 0 {
+                self.lnum += 1
+            };
         }
         r
     }
@@ -210,9 +220,9 @@ impl<A: BufRead> Lexer<A> {
         loop {
             match self.line.next() {
                 Some(w) => return Some(Ok(w)),
-                None    => match self.refill() {
-                    Ok(0)  => return None,
-                    Ok(_)  => (),
+                None => match self.refill() {
+                    Ok(0) => return None,
+                    Ok(_) => (),
                     Err(e) => return Some(Err(e)),
                 },
             }
@@ -222,8 +232,10 @@ impl<A: BufRead> Lexer<A> {
     fn next_word_or_err(&mut self) -> Result<String> {
         match self.next_word() {
             Some(w) => w,
-            None    => Err(Error::Parse("Unexpected end of file".to_string(),
-                                        self.lnum)),
+            None => Err(Error::Parse(
+                "Unexpected end of file".to_string(),
+                self.lnum,
+            )),
         }
     }
 
@@ -233,8 +245,8 @@ impl<A: BufRead> Lexer<A> {
         loop {
             match self.read_line(&mut cmds) {
                 Ok(0...1) => return Ok(cmds),
-                Ok(_)     => (),
-                Err(e)    => return Err(e),
+                Ok(_) => (),
+                Err(e) => return Err(e),
             }
         }
     }
@@ -285,10 +297,13 @@ mod test {
         assert_eq!(netrc.macros.len(), 1);
         let (ref name, ref cmds) = netrc.macros[0];
         assert_eq!(name, "uploadtest");
-        assert_eq!(cmds.trim(), "cd /pub/tests
+        assert_eq!(
+            cmds.trim(),
+            "cd /pub/tests
                             bin
                             put filename.tar.gz
-                            quit");
+                            quit"
+        );
     }
 
     #[test]
