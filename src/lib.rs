@@ -24,6 +24,17 @@ pub enum Error {
     Parse(String, usize),
 }
 
+impl std::error::Error for Error {}
+
+impl std::fmt::Display for Error {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::result::Result<(), std::fmt::Error> {
+        match *self {
+            Error::Io(ref cause) => write!(f, "I/O error: {}", cause),
+            Error::Parse(ref s, sz) => write!(f, "parser error at {} in '{}'", sz, s),
+        }
+    }
+}
+
 pub type Result<A> = std::result::Result<A, Error>;
 
 impl Netrc {
