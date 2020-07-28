@@ -59,9 +59,7 @@ impl Netrc {
                 None => break,
                 Some(Err(e)) => return Err(e),
                 Some(Ok(w)) => {
-                    current_machine = try! {
-                        netrc.parse_entry(&mut lexer, &w, current_machine)
-                    }
+                    current_machine = netrc.parse_entry(&mut lexer, &w, current_machine)?
                 }
             }
         }
@@ -91,7 +89,7 @@ impl Netrc {
 
         match item {
             "machine" => {
-                let host_name = try!(lexer.next_word_or_err());
+                let host_name = lexer.next_word_or_err()?;
                 self.hosts.push((host_name, Default::default()));
                 Ok(MachineRef::Host(self.hosts.len() - 1))
             }
@@ -100,16 +98,16 @@ impl Netrc {
                 Ok(MachineRef::Default)
             }
             "login" => with_current_machine!("login", m, {
-                m.login = try!(lexer.next_word_or_err());
+                m.login = lexer.next_word_or_err()?;
             }),
             "password" => with_current_machine!("password", m, {
-                m.password = Some(try!(lexer.next_word_or_err()));
+                m.password = Some(lexer.next_word_or_err()?);
             }),
             "account" => with_current_machine!("account", m, {
-                m.account = Some(try!(lexer.next_word_or_err()));
+                m.account = Some(lexer.next_word_or_err()?);
             }),
             "port" => with_current_machine!("port", m, {
-                let port = try!(lexer.next_word_or_err());
+                let port = lexer.next_word_or_err()?;
                 match port.parse() {
                     Ok(port) => m.port = Some(port),
                     Err(_) => {
@@ -119,8 +117,8 @@ impl Netrc {
                 }
             }),
             "macdef" => {
-                let name = try!(lexer.next_word_or_err());
-                let cmds = try!(lexer.next_subcommands());
+                let name = lexer.next_word_or_err()?;
+                let cmds = lexer.next_subcommands()?;
                 self.macros.push((name, cmds));
                 Ok(MachineRef::Nothing)
             }
@@ -211,7 +209,7 @@ impl<A: BufRead> Lexer<A> {
 
     fn refill(&mut self) -> Result<usize> {
         let mut line = String::new();
-        let n = try!(self.read_line(&mut line));
+        let n = self.read_line(&mut line)?;
         self.line = Tokens::new(line);
         Ok(n)
     }
