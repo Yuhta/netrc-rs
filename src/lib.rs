@@ -242,7 +242,7 @@ impl<A: BufRead> Lexer<A> {
         self.line = Tokens::empty();
         loop {
             match self.read_line(&mut cmds) {
-                Ok(0...1) => return Ok(cmds),
+                Ok(0..=1) => return Ok(cmds),
                 Ok(_) => (),
                 Err(e) => return Err(e),
             }
